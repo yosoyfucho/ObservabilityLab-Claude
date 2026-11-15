@@ -1,0 +1,28 @@
+# Overlay que se fusiona con config.yaml cuando hay credenciales de Dynatrace.
+# Agrega pipelines paralelos: los datos siguen llegando al stack local
+# y además se envían por OTLP a Dynatrace (Grail).
+
+processors:
+  # Dynatrace solo acepta métricas OTLP con temporalidad delta.
+  cumulative_to_delta: {}
+
+exporters:
+  otlp_http/dynatrace:
+    endpoint: ${env:DT_ENDPOINT}/api/v2/otlp
+    headers:
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
+
+service:
+  pipelines:
+    traces/dynatrace:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/dynatrace]
+    metrics/dynatrace:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, cumulative_to_delta, batch]
+      exporters: [otlp_http/dynatrace]
+    logs/dynatrace:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/dynatrace]

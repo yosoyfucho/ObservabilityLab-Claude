@@ -1,0 +1,10 @@
+# Se agrega automáticamente con `make up` cuando .env define DT_ENDPOINT y DT_API_TOKEN.
+# Fusiona otel-collector/dynatrace.yaml sobre la config base del Collector.
+services:
+  otel-collector:
+    command:
+      - --config=/etc/otelcol/config.yaml
+      - --config=/etc/otelcol/dynatrace.yaml
+    environment:
+      DT_ENDPOINT: ${DT_ENDPOINT:?Falta DT_ENDPOINT en .env}
+      DT_API_TOKEN: ${DT_API_TOKEN:?Falta DT_API_TOKEN en .env}

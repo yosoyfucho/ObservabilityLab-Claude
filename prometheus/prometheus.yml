@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Las métricas de la app llegan por OTLP (push desde el Collector),
+# no por scraping. Esto controla cómo se traducen a series de Prometheus.
+otlp:
+  promote_resource_attributes:
+    - deployment.environment.name
+    - service.version
+
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+# Scraping solo para la telemetría propia de los componentes del stack.
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]

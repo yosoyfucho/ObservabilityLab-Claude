@@ -1,0 +1,125 @@
+name: observabilitylab
+
+x-app-env: &app-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_METRIC_EXPORT_INTERVAL: "10000"
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=observabilitylab,service.version=0.1.0
+
+services:
+  # --- Aplicación de ejemplo (misma imagen, dos servicios) ---------------------
+  frontend:
+    build: ./app
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: lab-frontend
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on: [backend, otel-collector]
+    mem_limit: 128m
+    restart: unless-stopped
+
+  backend:
+    build: ./app
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: lab-backend
+      ERROR_RATE: "0.3"
+    depends_on: [otel-collector]
+    mem_limit: 128m
+    restart: unless-stopped
+
+  # --- Pipeline de telemetría -------------------------------------------------
+  otel-collector:
+    image: dynatrace/dynatrace-otel-collector:0.59.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector:/etc/otelcol:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "127.0.0.1:13133:13133" # health check
+    depends_on: [tempo, prometheus, loki]
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # --- Backends locales -------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.10.10
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    mem_limit: 512m
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=3d
+      - --web.enable-otlp-receiver
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    mem_limit: 512m
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    mem_limit: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    environment:
+      # Lab local: acceso anónimo como Admin, sin pantalla de login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/app-overview.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus, loki, tempo]
+    mem_limit: 384m
+    restart: unless-stopped
+
+  # --- Generador de tráfico (solo con `make load`) ----------------------------
+  loadgen:
+    image: curlimages/curl:8.22.0
+    profiles: ["load"]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          curl -s -o /dev/null http://frontend:8000/
+          curl -s -o /dev/null http://frontend:8000/checkout
+          curl -s -o /dev/null http://frontend:8000/checkout
+          curl -s -o /dev/null http://frontend:8000/nope
+          sleep 0.3
+        done
+    depends_on: [frontend]
+    mem_limit: 32m
+
+volumes:
+  tempo-data:
+  prometheus-data:
+  loki-data:
+  grafana-data:

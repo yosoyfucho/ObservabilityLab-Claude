@@ -122,6 +122,10 @@ timeseries fallidos = sum(log.observabilitylab.payment_failures), by:{service.na
 
 **Collector vs OpenPipeline:** en el Collector, en el borde, conviene filtrar ruido, agregar atributos y convertir temporalidad. En OpenPipeline, en el servidor, conviene parsear, enmascarar, extraer métricas o eventos y decidir bucket y retención de forma centralizada.
 
+## Aprender Terraform
+
+En [`terraform-course/`](terraform-course/) hay un curso práctico, de cero a hero, en 8 niveles: los primeros en local con Docker y los últimos administrando Dynatrace (buckets, RBAC con `dt.security_context` y OpenPipeline) como código.
+
 ## Estructura
 
 ```

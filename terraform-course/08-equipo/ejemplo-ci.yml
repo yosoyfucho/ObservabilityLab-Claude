@@ -1,0 +1,65 @@
+# EJEMPLO DIDÁCTICO: pipeline de GitHub Actions para Terraform con Dynatrace.
+# Está fuera de .github/workflows a propósito, así que NO se ejecuta.
+#
+# Flujo: en cada PR → fmt, validate y plan (publicado como comentario).
+#        al hacer merge en main → apply del mismo código.
+
+name: terraform-dynatrace
+
+on:
+  pull_request:
+    paths: ["dynatrace/**"]
+  push:
+    branches: [main]
+    paths: ["dynatrace/**"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: terraform-dynatrace-lab   # nunca dos ejecuciones a la vez sobre el mismo state
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dynatrace/envs/lab
+    env:
+      # Secretos inyectados desde GitHub Secrets (o Azure Key Vault): nunca en el código.
+      DYNATRACE_ENV_URL: ${{ secrets.DYNATRACE_ENV_URL }}
+      DT_CLIENT_ID: ${{ secrets.DT_CLIENT_ID }}
+      DT_CLIENT_SECRET: ${{ secrets.DT_CLIENT_SECRET }}
+      DT_ACCOUNT_ID: ${{ secrets.DT_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+
+      - run: terraform fmt -check -recursive
+      - run: terraform init -input=false
+      - run: terraform validate
+
+      - name: Plan
+        id: plan
+        run: terraform plan -input=false -no-color -out=tfplan | tee plan.txt
+
+      - name: Publicar el plan en el PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('dynatrace/envs/lab/plan.txt', 'utf8').slice(-60000);
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: context.issue.number,
+              body: "### Terraform plan\n```\n" + plan + "\n```",
+            });
+
+      - name: Apply (solo en main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -input=false tfplan

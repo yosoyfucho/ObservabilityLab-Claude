@@ -1,0 +1,12 @@
+# Copia este archivo como terraform.tfvars: Terraform lo carga automáticamente.
+# (terraform.tfvars está en .gitignore porque suele terminar conteniendo secretos)
+
+service_name     = "payments-api"
+environment      = "pre"
+security_context = "entidad-a"
+retention_days   = 14
+
+extra_attributes = {
+  "service.namespace" = "pagos"
+  "team"              = "plataforma"
+}

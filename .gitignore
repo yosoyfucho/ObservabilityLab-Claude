@@ -3,3 +3,16 @@ __pycache__/
 *.pyc
 .DS_Store
 tls/certs/
+
+# Terraform (curso)
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+crash.log
+terraform-course/**/salida/
+terraform-course/**/estado/
+terraform-course/**/generado.tf
+terraform-course/**/grafo.svg
+terraform-course/**/credenciales.env
+terraform-course/**/export/

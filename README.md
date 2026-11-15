@@ -96,6 +96,32 @@ fetch logs
 timeseries orders = sum(app.orders), by: { outcome }
 ```
 
+## OpenPipeline (procesamiento en Dynatrace)
+
+Todo lo que entra por OTLP pasa por **OpenPipeline** antes de guardarse en Grail. Sin configuración propia, los logs siguen la ruta `Default route → default`. En el tenant de prueba se configuró lo siguiente, desde la interfaz (**Settings → Process and contextualize → OpenPipeline → Logs**):
+
+| Pieza | Configuración |
+|---|---|
+| **Bucket** (Storage management → Grail buckets) | `observabilitylab_logs`, tabla `logs`, retención **7 días** (el bucket por defecto `default_logs` guarda 35) |
+| **Dynamic route** `observabilitylab-backend` | Matcher `service.name == "lab-backend"`, ordenada **antes** de la ruta por defecto |
+| **Pipeline** `observabilitylab-backend`, etapa *Processing* | Procesador DQL: `fieldsAdd lab.pipeline = "observabilitylab-backend", payment.failed = (error.message == "payment provider timeout")` |
+| Etapa *Metric extraction* | Counter `log.observabilitylab.payment_failures`, matcher `payment.failed == true`, dimensión extra `http.route` (`service.name` ya viene entre las recomendadas) |
+| Etapa *Bucket assignment* | Todo (`true`) → `observabilitylab_logs` |
+
+Verificación en un Notebook:
+
+```
+fetch logs, from:-5m
+| filter service.name == "lab-backend"
+| summarize n = count(), fallidos = countIf(payment.failed == true), by:{dt.system.bucket, lab.pipeline}
+```
+
+```
+timeseries fallidos = sum(log.observabilitylab.payment_failures), by:{service.name, http.route}, from:-10m
+```
+
+**Collector vs OpenPipeline:** en el Collector, en el borde, conviene filtrar ruido, agregar atributos y convertir temporalidad. En OpenPipeline, en el servidor, conviene parsear, enmascarar, extraer métricas o eventos y decidir bucket y retención de forma centralizada.
+
 ## Estructura
 
 ```

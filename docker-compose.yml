@@ -1,8 +1,12 @@
 name: observabilitylab
 
 x-app-env: &app-env
-  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  # OTLP sobre HTTPS con mTLS hacia el Collector (certificados de tls/gen-certs.sh)
+  OTEL_EXPORTER_OTLP_ENDPOINT: https://otel-collector:4318
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_EXPORTER_OTLP_CERTIFICATE: /certs/ca.crt
+  OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE: /certs/client.crt
+  OTEL_EXPORTER_OTLP_CLIENT_KEY: /certs/client.key
   OTEL_METRIC_EXPORT_INTERVAL: "10000"
   OTEL_RESOURCE_ATTRIBUTES: service.namespace=observabilitylab,service.version=0.1.0
 
@@ -10,6 +14,10 @@ services:
   # --- Aplicación de ejemplo (misma imagen, dos servicios) ---------------------
   frontend:
     build: ./app
+    volumes:
+      - ./tls/certs/ca.crt:/certs/ca.crt:ro
+      - ./tls/certs/client.crt:/certs/client.crt:ro
+      - ./tls/certs/client.key:/certs/client.key:ro
     environment:
       <<: *app-env
       OTEL_SERVICE_NAME: lab-frontend
@@ -22,6 +30,10 @@ services:
 
   backend:
     build: ./app
+    volumes:
+      - ./tls/certs/ca.crt:/certs/ca.crt:ro
+      - ./tls/certs/client.crt:/certs/client.crt:ro
+      - ./tls/certs/client.key:/certs/client.key:ro
     environment:
       <<: *app-env
       OTEL_SERVICE_NAME: lab-backend
@@ -36,9 +48,12 @@ services:
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-collector:/etc/otelcol:ro
+      - ./tls/certs/ca.crt:/etc/otelcol-certs/ca.crt:ro
+      - ./tls/certs/collector.crt:/etc/otelcol-certs/collector.crt:ro
+      - ./tls/certs/collector.key:/etc/otelcol-certs/collector.key:ro
     ports:
-      - "127.0.0.1:4317:4317"   # OTLP gRPC
-      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "127.0.0.1:4317:4317"   # OTLP gRPC (mTLS)
+      - "127.0.0.1:4318:4318"   # OTLP HTTP (mTLS)
       - "127.0.0.1:13133:13133" # health check
     depends_on: [tempo, prometheus, loki]
     mem_limit: 256m

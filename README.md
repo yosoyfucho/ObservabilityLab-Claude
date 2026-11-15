@@ -40,7 +40,7 @@ make help    # lista todos los comandos
 | Prometheus | http://localhost:9090               |
 | Tempo      | http://localhost:3200               |
 | Loki       | http://localhost:3100               |
-| Collector  | OTLP en `:4317` (gRPC) / `:4318` (HTTP), health en `:13133` |
+| Collector  | OTLP con **mTLS** en `:4317` (gRPC) / `:4318` (HTTP), health en `:13133` |
 | Frontend   | http://localhost:8000 (`/`, `/checkout`) |
 
 El dashboard **App overview (OTel)** se abre por defecto en Grafana. Desde una traza en Tempo puedes saltar a sus logs en Loki, y desde un log a su traza, porque todos los logs llevan `trace_id`.
@@ -133,7 +133,41 @@ loki/  tempo/               configs de almacenamiento local
 grafana/                    datasources (con correlación traza↔log) y dashboard
 docker-compose.yml          stack completo
 docker-compose.dynatrace.yml  override con credenciales de Dynatrace
+tls/gen-certs.sh            genera la CA y los certificados mTLS (tls/certs/, fuera de git)
 ```
+
+## TLS
+
+| Tramo | Cifrado |
+|---|---|
+| app → Collector (OTLP) | **mTLS**, TLS 1.2 como mínimo (en la práctica negocia TLS 1.3) |
+| Collector → Dynatrace | **TLS** (`https://…live.dynatrace.com`, CA pública) |
+| Collector → Tempo / Prometheus / Loki, frontend → backend, Grafana | Texto plano, solo dentro de la red de Docker |
+
+`make up` ejecuta `tls/gen-certs.sh` la primera vez. El script crea una **CA propia del lab** y la usa para firmar dos certificados:
+- el de **servidor** del Collector (SAN: `otel-collector`, `localhost` y `127.0.0.1`);
+- el de **cliente** que presentan las apps.
+
+El receptor OTLP exige un certificado de cliente firmado por esa CA (`client_ca_file`). La app se configura solo con variables estándar de OpenTelemetry:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector:4318
+OTEL_EXPORTER_OTLP_CERTIFICATE=/certs/ca.crt          # confiar en la CA del lab
+OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE=/certs/client.crt
+OTEL_EXPORTER_OTLP_CLIENT_KEY=/certs/client.key
+```
+
+Pruébalo desde tu Mac:
+
+```bash
+# Rechazado: no presenta un certificado de cliente
+curl --cacert tls/certs/ca.crt -X POST https://localhost:4318/v1/traces
+# Aceptado: mTLS completo
+curl --cacert tls/certs/ca.crt --cert tls/certs/client.crt --key tls/certs/client.key \
+     -H 'Content-Type: application/json' -d '{}' https://localhost:4318/v1/traces
+```
+
+Para regenerar los certificados, ejecuta `tls/gen-certs.sh --force` y luego `make restart`. Las claves privadas quedan con permisos 0644 para que los contenedores no-root puedan leerlas. En producción se usaría una PKI real o cert-manager, junto con secretos montados con permisos restringidos.
 
 ## Notas
 

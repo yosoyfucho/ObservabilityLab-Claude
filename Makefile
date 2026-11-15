@@ -1,4 +1,4 @@
-.PHONY: help up down restart ps logs load stop-load urls mode reload-prometheus clean
+.PHONY: help certs up down restart ps logs load stop-load urls mode reload-prometheus clean
 
 # Si .env define DT_API_TOKEN, se suma el overlay que envía también a Dynatrace.
 DT_ENABLED := $(shell grep -qsE '^DT_API_TOKEN=.+' .env && echo 1)
@@ -7,7 +7,7 @@ COMPOSE := docker compose -f docker-compose.yml $(if $(DT_ENABLED),-f docker-com
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-up: ## Levanta el stack (local, + Dynatrace si hay token en .env)
+up: certs ## Levanta el stack (local, + Dynatrace si hay token en .env)
 	$(COMPOSE) up -d --build $(shell docker compose config --services)
 	@$(MAKE) --no-print-directory mode urls
 
@@ -41,6 +41,9 @@ urls: ## Muestra las URLs del lab
 
 reload-prometheus: ## Recarga la config de Prometheus sin reiniciar
 	curl -s -X POST http://localhost:9090/-/reload && echo "Prometheus recargado"
+
+certs: ## Genera la CA y los certificados mTLS del lab (si no existen)
+	@tls/gen-certs.sh
 
 clean: ## Detiene todo y BORRA los volúmenes de datos
 	$(COMPOSE) down -v

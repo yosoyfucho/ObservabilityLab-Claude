@@ -6,10 +6,19 @@
 receivers:
   otlp:
     protocols:
+      # mTLS: el Collector presenta su certificado de servidor y además exige
+      # un certificado de cliente firmado por la CA del lab (client_ca_file).
+      # Certificados generados con tls/gen-certs.sh.
       grpc:
         endpoint: 0.0.0.0:4317
+        tls: &mtls
+          cert_file: /etc/otelcol-certs/collector.crt
+          key_file: /etc/otelcol-certs/collector.key
+          client_ca_file: /etc/otelcol-certs/ca.crt
+          min_version: "1.2"
       http:
         endpoint: 0.0.0.0:4318
+        tls: *mtls
 
 processors:
   memory_limiter:
